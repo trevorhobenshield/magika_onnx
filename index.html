@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>File Type Predictor</title>
+    <script src="https://cdn.jsdelivr.net/npm/protobufjs@7.2.5/dist/minimal/protobuf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.16.3/dist/ort.min.js"></script>
+    <script src="magika_labels.js"></script>
+    <script src="onnx.js"></script>
+    <script src="constants.js"></script>
+    <script src="helpers.js"></script>
+  </head>
+  <body>
+    <input type="file" id="fileInput" />
+    <button onclick="predictFile()">Predict File Type</button>
+    <div id="result"></div>
+
+    <script>
+      let session;
+
+      async function loadModel() {
+        const r = await fetch("magika.onnx");
+        const buf = await r.arrayBuffer();
+        const model = ModelProto.decode(new Uint8Array(buf));
+        window.model = model;
+        ModelProto.verify(model);
+        session = await ort.InferenceSession.create(buf, {
+          executionProviders: ["wasm"],
+          //   graphOptimizationLevel: "all",
+          //   executionMode: "parallel",
+          //   enableCpuMemArena: true,
+          //   enableMemPattern: true,
+          //   extra: {
+          //     session: {
+          //       set_denormal_as_zero: "1",
+          //       disable_prepacking: "1",
+          //     },
+          //     optimization: {
+          //       enable_gelu_approximation: "1",
+          //     },
+          //   },
+        });
+      }
+
+      async function predictFile() {
+        const fileInput = document.getElementById("fileInput");
+        const file = fileInput.files[0];
+        if (!file) {
+          alert("Please select a file.");
+          return;
+        }
+
+        const dim =
+          window.model.graph.input[0].type.tensorType.shape.dim.at(-1).dimValue;
+
+        const buf = await file.arrayBuffer();
+        const ui8 = new Uint8Array(buf);
+        const ui8Padded = new Uint8Array(dim);
+        ui8Padded.set(ui8.slice(0, dim));
+        const f32 = new Float32Array(ui8Padded);
+        const T = new ort.Tensor("float32", f32, [1, dim]);
+
+        const output = await session.run({ bytes: T });
+        const pred = argmax(output.target_label.data, labels);
+
+        document.getElementById(
+          "result"
+        ).textContent = `Predicted file type: ${pred}`;
+      }
+
+      loadModel().catch(console.error);
+    </script>
+  </body>
+</html>
