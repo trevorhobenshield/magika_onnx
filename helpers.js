@@ -1,16 +1,3 @@
-function argmax(preds, labels) {
-  const idx = preds.reduce((iMax, x, i, arr) => (x > arr[iMax] ? i : iMax), 0);
-  return preds[idx] >= labels[idx].threshold ? labels[idx].name : null;
-}
-
-function bufferToTensor(buf, dim = 1536) {
-  const ui8 = new Uint8Array(buf);
-  const ui8Padded = new Uint8Array(dim);
-  ui8Padded.set(ui8.slice(0, dim));
-  const f32 = new Float32Array(ui8Padded);
-  return new ort.Tensor("float32", f32, [1, dim]);
-}
-
 function parseNpy(buffer) {
   const dtype = {
     "|u1": Uint8Array,
@@ -110,6 +97,18 @@ const RandomTensor = Object.fromEntries(
   ])
 );
 
+function argmax(preds, labels) {
+  const idx = preds.reduce((iMax, x, i, arr) => (x > arr[iMax] ? i : iMax), 0);
+  return preds[idx] >= labels[idx].threshold ? labels[idx].name : null;
+}
+
+function softmax(logits) {
+  let max = Math.max(...logits);
+  let scores = logits.map((x) => Math.exp(x - max));
+  let sum = scores.reduce((a, b) => a + b, 0);
+  return scores.map((s) => s / sum);
+}
+
 function getInOut(model) {
   function fn(k) {
     return Object.fromEntries(
@@ -122,43 +121,5 @@ function getInOut(model) {
       ])
     );
   }
-
   return [fn("input"), fn("output")];
-}
-
-function getInfo(file, model) {
-  console.log(`%c${file.name}`, "color: #db2777");
-  console.log("      IR Version:", model.irVersion);
-  console.log("   Opset Version:", model.opsetImport[0].version);
-  console.log("        Producer:", model.producerName);
-  console.log("Producer Version:", model.producerVersion);
-  console.log("      Graph Name:", model.graph.name);
-  [modelOps, unsupportedOps] = checkOps(model);
-  console.log(`       Operators:`, modelOps);
-  const [ins, outs] = getInOut(model);
-  fmtInOut(ins, outs);
-  console.log(`         Backend: ${SESSION_OPTIONS.executionProviders}`);
-  console.log("model =", model);
-  console.log("session =", session);
-}
-
-function getShape(arr) {
-  let res = [];
-  let tmp = arr;
-  while (Array.isArray(tmp)) {
-    res.push(tmp.length);
-    tmp = tmp[0];
-  }
-  return res;
-}
-
-function _zip(arr, ...arrs) {
-  return arr.map((x, i) => [x, ...arrs.map((a) => a[i])]);
-}
-
-function softmax(logits) {
-  let max = Math.max(...logits);
-  let scores = logits.map((x) => Math.exp(x - max));
-  let sum = scores.reduce((a, b) => a + b, 0);
-  return scores.map((s) => s / sum);
 }
